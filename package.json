@@ -3,8 +3,21 @@
   "version": "1.0.0",
   "description": "A lightweight module to convert numbers from Arabic to Japanese characters.",
   "main": "./lib/index.js",
+  "type": "commonjs",
+  "types": "./lib/index.d.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "clean": "shx rm -rf lib/*",
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "mocha --ui qunit",
+    "testall": "mocha --ui qunit lib",
+    "prepack": "npm run clean && npm run build"
+  },
+  "devDependencies": {
+    "@types/mocha": "5.2.7",
+    "@types/node": "12.12.2",
+    "mocha": "8.1.1",
+    "shx": "0.3.2"
   },
   "keywords": [
     "numbers",
@@ -12,6 +25,10 @@
     "converter"
   ],
   "author": "Simple Programming <hi@simpleprogramming.com.au> (https://www.simpleprogramming.com.au/)",
+  "homepage": "https://github.com/SimpleProgrammingAU/nihon-numbers#readme",
+  "bugs": {
+    "url": "https://github.com/SimpleProgrammingAU/nihon-numbers/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",

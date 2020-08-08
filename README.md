@@ -1,2 +1,39 @@
 # nihon-numbers
 A lightweight module to convert numbers from Arabic to Japanese characters.
+
+## Installation
+```sh
+npm i --save nihon-numbers
+```
+
+## API
+```javascript
+processNumber(number)
+```
+Converts the input number into Japanese characters.
+
+### Arguments
+> `number: number`: The input integer to convert. Note: any decimal values will be rounded **down**.
+
+### Returns
+> `string`: The character representation of the input number.
+
+## Usage
+### JavaScript
+```javascript
+const processNumber = require('nihon-numbers');
+const number = processNumber(1500000);
+console.log(number); //Outputs: 百五十万
+```
+
+### TypeScript
+```typescript
+import { default as processNumber } from 'nihon-numbers';
+const number = processNumber(3800);
+console.log(number); //Outputs: 三千八百
+```
+
+## Test
+```sh
+npm run test
+```
