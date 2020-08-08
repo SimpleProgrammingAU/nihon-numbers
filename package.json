@@ -1,0 +1,20 @@
+{
+  "name": "nihon-numbers",
+  "version": "1.0.0",
+  "description": "A lightweight module to convert numbers from Arabic to Japanese characters.",
+  "main": "./lib/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "numbers",
+    "japanese",
+    "converter"
+  ],
+  "author": "Simple Programming <hi@simpleprogramming.com.au> (https://www.simpleprogramming.com.au/)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SimpleProgrammingAU/nihon-numbers.git"
+  }
+}
