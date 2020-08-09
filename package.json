@@ -17,7 +17,8 @@
     "@types/mocha": "5.2.7",
     "@types/node": "12.12.2",
     "mocha": "8.1.1",
-    "shx": "0.3.2"
+    "shx": "0.3.2",
+    "typescript": "3.9.7"
   },
   "keywords": [
     "numbers",
