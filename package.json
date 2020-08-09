@@ -2,16 +2,17 @@
   "name": "nihon-numbers",
   "version": "1.0.4",
   "description": "A lightweight module to convert numbers from Arabic to Japanese characters.",
-  "main": "./lib/index.js",
+  "main": "./lib/index.min.js",
   "type": "commonjs",
   "types": "./lib/index.d.ts",
   "scripts": {
     "clean": "shx rm -rf lib/*",
-    "build": "tsc",
+    "build": "tsc && npm run minify",
     "watch": "tsc --watch",
     "test": "nyc mocha lib/*.test.js -R spec -u tdd",
     "coverage": "nyc report --reporter=text-lcov | coveralls",
-    "prepack": "npm run clean && npm run build"
+    "prepack": "npm run clean && npm run build",
+    "minify": "uglifyjs --compress --mangle --output lib/index.min.js -- lib/index.js"
   },
   "devDependencies": {
     "@types/mocha": "5.2.7",
@@ -21,7 +22,8 @@
     "mocha-lcov-reporter": "1.3.0",
     "nyc": "15.1.0",
     "shx": "0.3.2",
-    "typescript": "3.9.7"
+    "typescript": "3.9.7",
+    "uglify-es": "3.3.9"
   },
   "keywords": [
     "numbers",
