@@ -1,6 +1,6 @@
 {
   "name": "nihon-numbers",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A lightweight module to convert numbers from Arabic to Japanese characters.",
   "main": "./lib/index.js",
   "type": "commonjs",
