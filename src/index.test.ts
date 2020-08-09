@@ -14,6 +14,9 @@ test("processNumber()", () => {
     processNumber((("a") as unknown) as number);
   });
   assert.throws(() => {
+    processNumber(((-123) as unknown) as number);
+  });
+  assert.throws(() => {
     processNumber((("12B456") as unknown) as number);
   });
   assert.throws(() => {

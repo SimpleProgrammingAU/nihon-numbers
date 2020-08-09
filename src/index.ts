@@ -20,7 +20,7 @@ export default (n: number): string => {
    * @param n 
    */
   const processNumber = (n: number): string => {
-    if (n.toString().search(/^[0-9]+(\.[0-9]+)?$/g) === -1) throw new TypeError("Input must be of type number");
+    if (n.toString().search(/^(-)?[0-9]+(\.[0-9]+)?$/g) === -1) throw new TypeError("Input must be of type number");
     if (n <= 0) throw new TypeError("Input number must be positive");
     if (n % 1 !== 0) console.warn(`Input number will be rounded down to nearest integer value: ${Math.floor(n)}`);
 
