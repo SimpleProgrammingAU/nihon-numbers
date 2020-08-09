@@ -15,10 +15,6 @@ export default (n: number): string => {
     { order: 16, char: "京" },
   ].reverse();
 
-  /**
-   * 
-   * @param n 
-   */
   const processNumber = (n: number): string => {
     if (n.toString().search(/^(-)?[0-9]+(\.[0-9]+)?$/g) === -1) throw new TypeError("Input must be of type number");
     if (n <= 0) throw new TypeError("Input number must be positive");

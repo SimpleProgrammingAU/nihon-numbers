@@ -1,2 +1,7 @@
+.nyc_output
 coverage
 src
+lib/*.map
+lib/*.test.d.ts
+*.yml
+package-lock.json
