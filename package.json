@@ -9,7 +9,7 @@
     "clean": "shx rm -rf lib/*",
     "build": "tsc",
     "watch": "tsc --watch",
-    "test": "mocha --ui qunit",
+    "test": "mocha --ui qunit lib/index.test.js",
     "testall": "mocha --ui qunit lib",
     "prepack": "npm run clean && npm run build"
   },
