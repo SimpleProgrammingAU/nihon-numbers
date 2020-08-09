@@ -2,6 +2,7 @@
 coverage
 src
 lib/*.map
-lib/*.test.d.ts
+lib/*.test.*
 *.yml
 package-lock.json
+tsconfig.json
