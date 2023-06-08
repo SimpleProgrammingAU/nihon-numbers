@@ -1,5 +1,5 @@
 # nihon-numbers
-[![Build Status](https://travis-ci.org/SimpleProgrammingAU/nihon-numbers.svg?branch=master)](https://travis-ci.org/SimpleProgrammingAU/nihon-numbers)
+[![Node.js CI/CD](https://github.com/SimpleProgrammingAU/nihon-numbers/actions/workflows/main.yml/badge.svg)](https://github.com/SimpleProgrammingAU/nihon-numbers/actions/workflows/main.yml)
 [![Coverage Status](https://coveralls.io/repos/github/SimpleProgrammingAU/nihon-numbers/badge.svg?branch=master)](https://coveralls.io/github/SimpleProgrammingAU/nihon-numbers?branch=master)
 ![GitHub issues](https://img.shields.io/github/issues/SimpleProgrammingAU/nihon-numbers)
 ![NPM Licence](https://img.shields.io/npm/l/nihon-numbers)
