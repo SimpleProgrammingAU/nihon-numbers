@@ -1,0 +1,11 @@
+{
+  // TypeScript 7 (`tsc`) compiles; the editor uses the TypeScript 6 language service.
+  "typescript.tsdk": "node_modules/@typescript/old/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "files.eol": "\n"
+}
