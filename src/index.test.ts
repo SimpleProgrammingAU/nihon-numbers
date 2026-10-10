@@ -11,15 +11,15 @@ test("processNumber()", () => {
   assert.strictEqual(processNumber(130200000), "一億三千二十万");
   assert.strictEqual(processNumber(9876543290187), "九兆八千七百六十五億四千三百二十九万百八十七");
   assert.throws(() => {
-    processNumber((("a") as unknown) as number);
+    processNumber("a" as unknown as number);
   });
   assert.throws(() => {
-    processNumber(((-123) as unknown) as number);
+    processNumber(-123 as unknown as number);
   });
   assert.throws(() => {
-    processNumber((("12B456") as unknown) as number);
+    processNumber("12B456" as unknown as number);
   });
   assert.throws(() => {
-    processNumber((("%*/+-") as unknown) as number);
+    processNumber("%*/+-" as unknown as number);
   });
 });
