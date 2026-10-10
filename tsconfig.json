@@ -9,6 +9,7 @@
     "outDir": "./lib",
     "declaration": true,
     "sourceMap": true,
+    "inlineSources": true,
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
