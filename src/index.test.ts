@@ -157,7 +157,7 @@ suite("processNumber()", () => {
   });
 
   test("throws INVALID_DIRECTION for unknown directions", () => {
-    const message = 'Direction must be "toAdditive" or "toPositional", received';
+    const message = 'Direction must be "toAdditive", "toPositional" or "toArabic", received';
     assertThrowsCode(() => processNumber(1, "toKanji" as "toAdditive"), "INVALID_DIRECTION", `${message} "toKanji"`);
     assertThrowsCode(() => processNumber(1, 1 as unknown as "toAdditive"), "INVALID_DIRECTION", `${message} number`);
     assertThrowsCode(() => processNumber(1, null as unknown as "toAdditive"), "INVALID_DIRECTION", `${message} null`);
@@ -175,6 +175,7 @@ suite("processNumber()", () => {
       processNumber(10.5);
       processNumber(0.5);
       processNumber(10.5, "toPositional");
+      processNumber("三千八百", "toArabic");
     } finally {
       Object.assign(console, original);
     }
@@ -226,5 +227,142 @@ suite('processNumber(…, "toPositional")', () => {
     assertThrowsCode(() => processNumber(-1, "toPositional"), "NEGATIVE");
     assertThrowsCode(() => processNumber(2 ** 53, "toPositional"), "UNSAFE_INTEGER");
     assertThrowsCode(() => processNumber(MAX_BIGINT + 1n, "toPositional"), "TOO_LARGE");
+  });
+});
+
+suite('processNumber(…, "toArabic")', () => {
+  function assertParses(cases: readonly (readonly [string, string])[]): void {
+    for (const [input, expected] of cases) {
+      assert.equal(processNumber(input, "toArabic"), expected, `processNumber("${input}", "toArabic")`);
+    }
+  }
+
+  function assertRejects(cases: readonly (readonly [string, string])[]): void {
+    for (const [input, message] of cases) {
+      assertThrowsCode(() => processNumber(input, "toArabic"), "INVALID_KANJI", message);
+    }
+  }
+
+  test("reverses both additive and positional notation", () => {
+    const samples: (number | bigint)[] = [130200000, 9876543290187, Number.MAX_SAFE_INTEGER, 12345678901234567890n];
+    for (let n = 0; n <= 20000; n++) {
+      samples.push(n);
+    }
+    for (let k = 1n; k <= 18n; k++) {
+      samples.push(10n ** (4n * k) - 1n, 10n ** (4n * (k - 1n)));
+    }
+    for (const n of samples) {
+      assert.equal(processNumber(processNumber(n), "toArabic"), String(n), `additive ${String(n)}`);
+      assert.equal(processNumber(processNumber(n, "toPositional"), "toArabic"), String(n), `positional ${String(n)}`);
+    }
+  });
+
+  test("parses additive notation", () => {
+    assertParses([
+      ["三千八百", "3800"],
+      ["十", "10"],
+      ["百十", "110"],
+      ["千", "1000"],
+      ["一万千", "11000"],
+      ["一億三千二十万", "130200000"],
+    ]);
+  });
+
+  test("accepts 一 before 十, 百 and 千", () => {
+    assertParses([
+      ["一十", "10"],
+      ["一百一十", "110"],
+      ["一千", "1000"],
+      ["二千一百", "2100"],
+      ["一千万", "10000000"],
+    ]);
+  });
+
+  test("accepts 秭 for 𥝱", () => {
+    assertParses([
+      ["一秭", `1${"0".repeat(24)}`],
+      ["二秭三垓", processNumber("二𥝱三垓", "toArabic")],
+    ]);
+  });
+
+  test("parses zero", () => {
+    assertParses([
+      ["零", "0"],
+      ["〇", "0"],
+      ["〇〇", "0"],
+    ]);
+  });
+
+  test("parses positional notation", () => {
+    assertParses([
+      ["二〇二六", "2026"],
+      ["一二三", "123"],
+      ["〇〇五", "5"],
+      ["九".repeat(72), "9".repeat(72)],
+      [`${"〇".repeat(80)}一`, "1"],
+    ]);
+  });
+
+  test("throws TOO_LARGE for positional notation of 10^72 or more", () => {
+    assertThrowsCode(
+      () => processNumber(`一${"〇".repeat(72)}`, "toArabic"),
+      "TOO_LARGE",
+      "Input must be less than 10^72, received a 73-digit number",
+    );
+  });
+
+  test("throws INVALID_TYPE for inputs that are not strings", () => {
+    const message = "Input must be a string of kanji numerals, received";
+    for (const input of [123, 123n, null, undefined]) {
+      assertThrowsCode(
+        () => processNumber(input as unknown as string, "toArabic"),
+        "INVALID_TYPE",
+        `${message} ${input === null ? "null" : typeof input}`,
+      );
+    }
+  });
+
+  test("rejects empty input", () => {
+    assertRejects([["", "Input must not be empty"]]);
+  });
+
+  test("rejects characters that are not kanji numerals", () => {
+    assertRejects([
+      ["二〇二六年", 'Unexpected "年" at index 4 in "二〇二六年"'],
+      ["三 ", 'Unexpected " " at index 1 in "三 "'],
+      [" 三", 'Unexpected " " at index 0 in " 三"'],
+      ["3万", 'Unexpected "3" at index 0 in "3万"'],
+      ["壱", 'Unexpected "壱" at index 0 in "壱"'],
+      ["三点一四", 'Unexpected "点" at index 1 in "三点一四"'],
+      ["マイナス五", 'Unexpected "マ" at index 0 in "マイナス五"'],
+      ["一𥝱年", 'Unexpected "年" at index 2 in "一𥝱年"'],
+    ]);
+  });
+
+  test("rejects kanji numeral characters in the wrong place", () => {
+    assertRejects([
+      ["十十", 'Unexpected "十" at index 1 in "十十"'],
+      ["千〇五", 'Unexpected "〇" at index 1 in "千〇五"'],
+      ["〇十", 'Unexpected "〇" at index 0 in "〇十"'],
+      ["二零二六", 'Unexpected "零" at index 1 in "二零二六"'],
+      ["零一", 'Unexpected "零" at index 0 in "零一"'],
+      ["不", 'Unexpected "不" at index 0 in "不"'],
+      ["一𥝱十十", 'Unexpected "十" at index 3 in "一𥝱十十"'],
+    ]);
+  });
+
+  test("rejects large units without a number before them", () => {
+    assertRejects([
+      ["万", '"万" needs a number before it in "万"'],
+      ["一億万", '"万" needs a number before it in "一億万"'],
+    ]);
+  });
+
+  test("rejects large units out of order", () => {
+    assertRejects([
+      ["一万一億", '"億" cannot follow "万" in "一万一億"'],
+      ["一億一億", '"億" cannot follow "億" in "一億一億"'],
+      ["一秭一𥝱", '"𥝱" cannot follow "秭" in "一秭一𥝱"'],
+    ]);
   });
 });
