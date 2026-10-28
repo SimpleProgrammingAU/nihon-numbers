@@ -1,8 +1,19 @@
 import { strict as assert } from "node:assert";
-import processNumberDefault, { NihonNumbersError, processNumber, type NihonNumbersErrorCode } from "./index.js";
+import processNumberDefault, { isNihonNumbersError, processNumber, type NihonNumbersErrorCode } from "./index.js";
 
 /** The largest supported input, 10^72 - 1. */
 const MAX_BIGINT = 10n ** 72n - 1n;
+
+/** The built-in error type expected for each code. */
+const EXPECTED_TYPES: Record<NihonNumbersErrorCode, ErrorConstructor> = {
+  INVALID_DIRECTION: TypeError,
+  INVALID_TYPE: TypeError,
+  NOT_FINITE: RangeError,
+  NEGATIVE: RangeError,
+  UNSAFE_INTEGER: RangeError,
+  TOO_LARGE: RangeError,
+  INVALID_KANJI: SyntaxError,
+};
 
 function assertConverts(cases: readonly (readonly [number | bigint, string])[]): void {
   for (const [input, expected] of cases) {
@@ -10,7 +21,7 @@ function assertConverts(cases: readonly (readonly [number | bigint, string])[]):
   }
 }
 
-/** Asserts that `fn` throws a NihonNumbersError, which is also a TypeError, with the given code and, optionally, message. */
+/** Asserts that `fn` throws a NihonNumbersError of the built-in type for `code`, with that code and, optionally, message. */
 function assertThrowsCode(fn: () => unknown, code: NihonNumbersErrorCode, message?: string): void {
   let thrown: unknown;
   try {
@@ -18,8 +29,9 @@ function assertThrowsCode(fn: () => unknown, code: NihonNumbersErrorCode, messag
   } catch (error) {
     thrown = error;
   }
-  assert.ok(thrown instanceof NihonNumbersError, `expected a NihonNumbersError with code ${code}`);
-  assert.ok(thrown instanceof TypeError);
+  assert.ok(isNihonNumbersError(thrown), `expected a NihonNumbersError with code ${code}`);
+  assert.ok(thrown instanceof EXPECTED_TYPES[code], `expected a ${EXPECTED_TYPES[code].name} for ${code}`);
+  assert.equal(thrown.name, EXPECTED_TYPES[code].name);
   assert.equal(thrown.code, code);
   if (message !== undefined) {
     assert.equal(thrown.message, message);
@@ -127,6 +139,16 @@ suite("processNumber()", () => {
     assertThrowsCode(() => processNumber(-5), "NEGATIVE", "Input must not be negative, received -5");
     assertThrowsCode(() => processNumber(-0.5), "NEGATIVE", "Input must not be negative, received -0.5");
     assertThrowsCode(() => processNumber(-1n), "NEGATIVE", "Input must not be negative, received -1n");
+    assertThrowsCode(
+      () => processNumber(-MAX_BIGINT),
+      "NEGATIVE",
+      `Input must not be negative, received -${"9".repeat(72)}n`,
+    );
+    assertThrowsCode(
+      () => processNumber(-(10n ** 300n)),
+      "NEGATIVE",
+      "Input must not be negative, received a number with more than 72 digits",
+    );
   });
 
   test("throws UNSAFE_INTEGER for numbers above Number.MAX_SAFE_INTEGER", () => {
@@ -142,12 +164,23 @@ suite("processNumber()", () => {
     assertThrowsCode(
       () => processNumber(MAX_BIGINT + 1n),
       "TOO_LARGE",
-      "Input must be less than 10^72, received a 73-digit number",
+      "Input must be less than 10^72, received a number with more than 72 digits",
     );
   });
 
-  test("names its errors NihonNumbersError", () => {
-    assert.throws(() => processNumber(-1), { name: "NihonNumbersError" });
+  test("isNihonNumbersError recognises only this module's errors", () => {
+    let thrown: unknown;
+    try {
+      processNumber(-1);
+    } catch (error) {
+      thrown = error;
+    }
+    assert.ok(isNihonNumbersError(thrown));
+    assert.equal(isNihonNumbersError(new RangeError("Input must not be negative")), false);
+    assert.equal(isNihonNumbersError(Object.assign(new RangeError("x"), { code: "NEGATIVE" })), false);
+    assert.equal(isNihonNumbersError({ code: "NEGATIVE" }), false);
+    assert.equal(isNihonNumbersError("NEGATIVE"), false);
+    assert.equal(isNihonNumbersError(null), false);
   });
 
   test('treats an explicit "toAdditive" like the default', () => {
@@ -161,6 +194,15 @@ suite("processNumber()", () => {
     assertThrowsCode(() => processNumber(1, "toKanji" as "toAdditive"), "INVALID_DIRECTION", `${message} "toKanji"`);
     assertThrowsCode(() => processNumber(1, 1 as unknown as "toAdditive"), "INVALID_DIRECTION", `${message} number`);
     assertThrowsCode(() => processNumber(1, null as unknown as "toAdditive"), "INVALID_DIRECTION", `${message} null`);
+  });
+
+  test("throws INVALID_DIRECTION when passed straight to Array.prototype.map", () => {
+    // map passes the index as the second argument, so a callback must wrap processNumber.
+    assertThrowsCode(() => [1, 2].map(processNumber as (n: number) => string), "INVALID_DIRECTION");
+    assert.deepEqual(
+      [1, 2].map((n) => processNumber(n)),
+      ["一", "二"],
+    );
   });
 
   test("never writes to the console", () => {
@@ -281,8 +323,19 @@ suite('processNumber(…, "toArabic")', () => {
   test("accepts 秭 for 𥝱", () => {
     assertParses([
       ["一秭", `1${"0".repeat(24)}`],
-      ["二秭三垓", processNumber("二𥝱三垓", "toArabic")],
+      ["二秭三垓", `20003${"0".repeat(20)}`],
+      ["二𥝱三垓", `20003${"0".repeat(20)}`],
     ]);
+  });
+
+  test("accepts ○ for 〇 in positional notation", () => {
+    assertParses([
+      ["二○二六", "2026"],
+      ["二〇○六", "2006"],
+      ["○", "0"],
+      ["○○五", "5"],
+    ]);
+    assertRejects([["二千○五", 'Unexpected "○" at index 2 in "二千○五"']]);
   });
 
   test("parses zero", () => {
@@ -307,8 +360,9 @@ suite('processNumber(…, "toArabic")', () => {
     assertThrowsCode(
       () => processNumber(`一${"〇".repeat(72)}`, "toArabic"),
       "TOO_LARGE",
-      "Input must be less than 10^72, received a 73-digit number",
+      "Input must be less than 10^72, received a number with more than 72 digits",
     );
+    assertThrowsCode(() => processNumber("一".repeat(1_000_000), "toArabic"), "TOO_LARGE");
   });
 
   test("throws INVALID_TYPE for inputs that are not strings", () => {
@@ -364,5 +418,19 @@ suite('processNumber(…, "toArabic")', () => {
       ["一億一億", '"億" cannot follow "億" in "一億一億"'],
       ["一秭一𥝱", '"𥝱" cannot follow "秭" in "一秭一𥝱"'],
     ]);
+  });
+
+  test("quotes at most 32 characters of the input, with control characters escaped", () => {
+    const long = `十${"十".repeat(40)}`;
+    assertRejects([
+      [long, `Unexpected "十" at index 1 in "${"十".repeat(32)}…"`],
+      [`十${"𥝱".repeat(40)}`, `"𥝱" needs a number before it in "十${"𥝱".repeat(31)}…"`],
+      ["一\u001b[2J\r年", 'Unexpected "\\u001b" at index 1 in "一\\u001b[2J\\r年"'],
+    ]);
+    assertThrowsCode(
+      () => processNumber(1, `to${"X".repeat(40)}` as "toAdditive"),
+      "INVALID_DIRECTION",
+      `Direction must be "toAdditive", "toPositional" or "toArabic", received "to${"X".repeat(30)}…"`,
+    );
   });
 });

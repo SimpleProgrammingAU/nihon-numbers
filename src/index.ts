@@ -26,31 +26,74 @@ const LARGE_UNITS = [
   "無量大数",
 ] as const;
 
+/** The characters of each large unit, so 𥝱 counts as one character rather than two UTF-16 code units. */
+const LARGE_UNIT_CHARACTERS = LARGE_UNITS.map((unit) => Array.from(unit));
+
 /** The largest supported input, 10^72 - 1. */
 const MAX_BIGINT = 10n ** 72n - 1n;
 
-/** 秭, an alternative form of 𥝱 that `toArabic` accepts. */
-const ALTERNATIVE_JO = "秭";
+/** The most digits a supported input can have. */
+const MAX_DIGITS = 72;
 
-/** Every character that can appear in kanji numerals, including 零 and 秭. */
-const KANJI_CHARACTERS = new Set(Array.from(`${DIGITS}${SMALL_UNITS}${LARGE_UNITS.join("")}零${ALTERNATIVE_JO}`));
+/** Alternative forms that `toArabic` accepts: 秭 for 𥝱, and ○ (a circle often typed instead of 〇) for 〇. */
+const ALTERNATIVES = new Map([
+  ["秭", "𥝱"],
+  ["○", "〇"],
+]);
+
+/** Every character that can appear in kanji numerals, including 零 and the alternative forms. */
+const KANJI_CHARACTERS = new Set([
+  ...Array.from(`${DIGITS}${SMALL_UNITS}${LARGE_UNITS.join("")}零`),
+  ...ALTERNATIVES.keys(),
+]);
+
+/** The most characters of the input that an error message repeats. */
+const QUOTE_LIMIT = 32;
 
 /** Identifies why `processNumber` rejected its arguments. */
 type NihonNumbersErrorCode =
   "INVALID_DIRECTION" | "INVALID_TYPE" | "NOT_FINITE" | "NEGATIVE" | "UNSAFE_INTEGER" | "TOO_LARGE" | "INVALID_KANJI";
 
-/**
- * Thrown by `processNumber` for invalid arguments. It extends `TypeError`, so code that catches `TypeError` still works.
- */
-class NihonNumbersError extends TypeError {
-  /** Why the arguments were rejected. */
-  readonly code: NihonNumbersErrorCode;
+/** An error thrown by `processNumber`: a built-in error type with a `code` that says what went wrong. */
+type NihonNumbersError =
+  | (TypeError & { readonly code: "INVALID_DIRECTION" | "INVALID_TYPE" })
+  | (RangeError & { readonly code: "NOT_FINITE" | "NEGATIVE" | "UNSAFE_INTEGER" | "TOO_LARGE" })
+  | (SyntaxError & { readonly code: "INVALID_KANJI" });
 
-  constructor(code: NihonNumbersErrorCode, message: string) {
-    super(message);
-    this.name = "NihonNumbersError";
-    this.code = code;
-  }
+/** The built-in error type thrown for each code. */
+const ERROR_TYPES: Record<NihonNumbersErrorCode, ErrorConstructor> = {
+  INVALID_DIRECTION: TypeError,
+  INVALID_TYPE: TypeError,
+  NOT_FINITE: RangeError,
+  NEGATIVE: RangeError,
+  UNSAFE_INTEGER: RangeError,
+  TOO_LARGE: RangeError,
+  INVALID_KANJI: SyntaxError,
+};
+
+/**
+ * Marks the errors this module throws, so `isNihonNumbersError` can tell them apart from other errors with a `code`.
+ * `Symbol.for` lets separate copies of the package recognise each other's errors.
+ */
+const ERROR_BRAND = Symbol.for("nihon-numbers.error");
+
+/**
+ * Creates the error for a code, using the built-in error type that matches it.
+ * @param code Why the arguments were rejected.
+ * @param message What was expected and what was received.
+ */
+function createError(code: NihonNumbersErrorCode, message: string): Error {
+  const error = Object.assign(new ERROR_TYPES[code](message), { code });
+  Object.defineProperty(error, ERROR_BRAND, { value: true });
+  return error;
+}
+
+/**
+ * Returns whether a caught value is an error thrown by `processNumber`.
+ * @param error The caught value.
+ */
+function isNihonNumbersError(error: unknown): error is NihonNumbersError {
+  return error instanceof Error && ERROR_BRAND in error;
 }
 
 /**
@@ -68,16 +111,22 @@ function describeType(value: unknown): string {
 }
 
 /**
- * Throws if a value is beyond the supported range.
- * @param value A non-negative value to check.
+ * Quotes part of the input for an error message: at most `QUOTE_LIMIT` characters, with control characters escaped.
+ * @param text The text to quote.
  */
-function assertWithinLimit(value: bigint): void {
-  if (value > MAX_BIGINT) {
-    throw new NihonNumbersError(
-      "TOO_LARGE",
-      `Input must be less than 10^72, received a ${String(value.toString().length)}-digit number`,
-    );
-  }
+function quote(text: string): string {
+  // Slicing first keeps this cheap for long input. Two code units per character covers characters such as 𥝱.
+  const characters = Array.from(text.slice(0, QUOTE_LIMIT * 2));
+  const truncated = characters.length > QUOTE_LIMIT || text.length > QUOTE_LIMIT * 2;
+  return JSON.stringify(`${characters.slice(0, QUOTE_LIMIT).join("")}${truncated ? "…" : ""}`);
+}
+
+/** Builds the error for an input of 10^72 or more. */
+function tooLarge(): Error {
+  return createError(
+    "TOO_LARGE",
+    `Input must be less than 10^72, received a number with more than ${String(MAX_DIGITS)} digits`,
+  );
 }
 
 /**
@@ -87,24 +136,27 @@ function assertWithinLimit(value: bigint): void {
 function toDigitString(n: unknown): string {
   if (typeof n === "bigint") {
     if (n < 0n) {
-      throw new NihonNumbersError("NEGATIVE", `Input must not be negative, received ${String(n)}n`);
+      const received = n < -MAX_BIGINT ? `a number with more than ${String(MAX_DIGITS)} digits` : `${String(n)}n`;
+      throw createError("NEGATIVE", `Input must not be negative, received ${received}`);
     }
-    assertWithinLimit(n);
+    if (n > MAX_BIGINT) {
+      throw tooLarge();
+    }
     return n.toString();
   }
 
   if (typeof n !== "number") {
-    throw new NihonNumbersError("INVALID_TYPE", `Input must be a number or a bigint, received ${describeType(n)}`);
+    throw createError("INVALID_TYPE", `Input must be a number or a bigint, received ${describeType(n)}`);
   }
   if (!Number.isFinite(n)) {
-    throw new NihonNumbersError("NOT_FINITE", `Input must be finite, received ${String(n)}`);
+    throw createError("NOT_FINITE", `Input must be finite, received ${String(n)}`);
   }
   if (n < 0) {
-    throw new NihonNumbersError("NEGATIVE", `Input must not be negative, received ${String(n)}`);
+    throw createError("NEGATIVE", `Input must not be negative, received ${String(n)}`);
   }
   const integer = Math.floor(n);
   if (integer > Number.MAX_SAFE_INTEGER) {
-    throw new NihonNumbersError(
+    throw createError(
       "UNSAFE_INTEGER",
       `Input must not exceed Number.MAX_SAFE_INTEGER, received ${String(n)}; pass a bigint for larger values`,
     );
@@ -166,46 +218,49 @@ function toPositional(n: unknown): string {
 /**
  * Builds the error for a character that can't appear where it is.
  * @param text The whole input.
- * @param index Position of the character, counted in characters rather than UTF-16 code units, so 𥝱 counts as one.
+ * @param characters The input's characters, as written.
+ * @param index Position of the character in `characters`.
  */
-function unexpectedCharacter(text: string, index: number): NihonNumbersError {
-  const character = String(Array.from(text)[index]);
-  return new NihonNumbersError("INVALID_KANJI", `Unexpected "${character}" at index ${String(index)} in "${text}"`);
+function unexpectedCharacter(text: string, characters: readonly string[], index: number): Error {
+  return createError(
+    "INVALID_KANJI",
+    `Unexpected ${quote(String(characters[index]))} at index ${String(index)} in ${quote(text)}`,
+  );
 }
 
 /**
- * Returns the value of the digit 一–九 at a position, or 0 if there isn't one there.
- * 〇, other characters and positions past the end all give 0, because `DIGITS.indexOf` returns 0 for 〇 and for "",
+ * Returns the value of the digit 一–九 at an index, or 0 if there isn't one there.
+ * 〇, other characters and indexes past the end all give 0, because `DIGITS.indexOf` returns 0 for 〇 and for "",
  * and -1 otherwise.
- * @param text The whole input.
- * @param position Position in UTF-16 code units.
+ * @param characters The input's characters, with alternative forms replaced.
+ * @param index Position in `characters`.
  */
-function digitAt(text: string, position: number): number {
-  return Math.max(0, DIGITS.indexOf(text.charAt(position)));
+function digitAt(characters: readonly string[], index: number): number {
+  return Math.max(0, DIGITS.indexOf(characters[index] ?? ""));
 }
 
 /**
- * Reads a group in additive notation, such as 千八百一, from a position.
+ * Reads a group in additive notation, such as 千八百一, from an index.
  * 一 is optional before 十, 百 and 千, so both 千 and 一千 are 1000.
- * @param text The whole input.
- * @param position Position in UTF-16 code units.
- * @returns The group's value, which is 0 if no group starts there, and the position after it.
+ * @param characters The input's characters, with alternative forms replaced.
+ * @param index Position in `characters`.
+ * @returns The group's value, which is 0 if no group starts there, and the index after it.
  */
-function readGroup(text: string, position: number): { value: number; end: number } {
+function readGroup(characters: readonly string[], index: number): { value: number; end: number } {
   let value = 0;
-  let end = position;
+  let end = index;
   for (let power = 3; power >= 1; power--) {
     const unit = SMALL_UNITS.charAt(power - 1);
-    const digit = digitAt(text, end);
-    if (digit > 0 && text.charAt(end + 1) === unit) {
+    const digit = digitAt(characters, end);
+    if (digit > 0 && characters[end + 1] === unit) {
       value += digit * 10 ** power;
       end += 2;
-    } else if (text.charAt(end) === unit) {
+    } else if (characters[end] === unit) {
       value += 10 ** power;
       end += 1;
     }
   }
-  const ones = digitAt(text, end);
+  const ones = digitAt(characters, end);
   if (ones > 0) {
     value += ones;
     end += 1;
@@ -214,18 +269,15 @@ function readGroup(text: string, position: number): { value: number; end: number
 }
 
 /**
- * Reads a large unit, such as 万 or 不可思議, from a position.
- * @param text The whole input.
- * @param position Position in UTF-16 code units.
- * @returns The unit's index in `LARGE_UNITS` and its text as written, or `undefined` if no large unit starts there.
+ * Reads a large unit, such as 万 or 不可思議, from an index.
+ * @param characters The input's characters, with alternative forms replaced.
+ * @param index Position in `characters`.
+ * @returns The unit's index in `LARGE_UNITS` and its length in characters, or `undefined` if no large unit starts there.
  */
-function readLargeUnit(text: string, position: number): { index: number; text: string } | undefined {
-  if (text.startsWith(ALTERNATIVE_JO, position)) {
-    return { index: LARGE_UNITS.indexOf("𥝱"), text: ALTERNATIVE_JO };
-  }
-  for (const [index, unit] of LARGE_UNITS.entries()) {
-    if (index > 0 && text.startsWith(unit, position)) {
-      return { index, text: unit };
+function readLargeUnit(characters: readonly string[], index: number): { unit: number; length: number } | undefined {
+  for (const [unit, unitCharacters] of LARGE_UNIT_CHARACTERS.entries()) {
+    if (unit > 0 && unitCharacters.every((character, offset) => characters[index + offset] === character)) {
+      return { unit, length: unitCharacters.length };
     }
   }
   return undefined;
@@ -233,42 +285,50 @@ function readLargeUnit(text: string, position: number): { index: number; text: s
 
 /**
  * Converts positional notation, such as 二〇二六, into Arabic numerals.
- * @param text Kanji digits only.
+ * @param characters The input's characters, all digits, with alternative forms replaced.
  */
-function fromPositional(text: string): string {
-  const value = BigInt(text.replace(/[〇一二三四五六七八九]/g, (digit) => String(DIGITS.indexOf(digit))));
-  assertWithinLimit(value);
-  return value.toString();
+function fromPositional(characters: readonly string[]): string {
+  const digits = characters
+    .map((character) => String(DIGITS.indexOf(character)))
+    .join("")
+    .replace(/^0+(?=\d)/, "");
+  if (digits.length > MAX_DIGITS) {
+    throw tooLarge();
+  }
+  return digits;
 }
 
 /**
  * Converts additive notation, such as 一億三千二十万, into Arabic numerals.
- * @param text Kanji numeral characters only.
+ * @param text The whole input.
+ * @param written The input's characters, as written.
+ * @param characters The input's characters, with alternative forms replaced.
  */
-function fromAdditive(text: string): string {
+function fromAdditive(text: string, written: readonly string[], characters: readonly string[]): string {
   let total = 0n;
   // Large units go from largest to smallest, so each must have a lower index than the one before it.
-  let previous: { index: number; text: string } = { index: LARGE_UNITS.length, text: "" };
-  let position = 0;
-  while (position < text.length) {
-    const group = readGroup(text, position);
-    const unit = readLargeUnit(text, group.end);
-    if (unit === undefined) {
-      if (group.end < text.length) {
-        throw unexpectedCharacter(text, Array.from(text.slice(0, group.end)).length);
+  let previous: { unit: number; text: string } = { unit: LARGE_UNITS.length, text: "" };
+  let index = 0;
+  while (index < characters.length) {
+    const group = readGroup(characters, index);
+    const largeUnit = readLargeUnit(characters, group.end);
+    if (largeUnit === undefined) {
+      if (group.end < characters.length) {
+        throw unexpectedCharacter(text, written, group.end);
       }
       total += BigInt(group.value);
       break;
     }
+    const unitText = written.slice(group.end, group.end + largeUnit.length).join("");
     if (group.value === 0) {
-      throw new NihonNumbersError("INVALID_KANJI", `"${unit.text}" needs a number before it in "${text}"`);
+      throw createError("INVALID_KANJI", `${quote(unitText)} needs a number before it in ${quote(text)}`);
     }
-    if (unit.index >= previous.index) {
-      throw new NihonNumbersError("INVALID_KANJI", `"${unit.text}" cannot follow "${previous.text}" in "${text}"`);
+    if (largeUnit.unit >= previous.unit) {
+      throw createError("INVALID_KANJI", `${quote(unitText)} cannot follow ${quote(previous.text)} in ${quote(text)}`);
     }
-    total += BigInt(group.value) * 10n ** BigInt(4 * unit.index);
-    previous = unit;
-    position = group.end + unit.text.length;
+    total += BigInt(group.value) * 10n ** BigInt(4 * largeUnit.unit);
+    previous = { unit: largeUnit.unit, text: unitText };
+    index = group.end + largeUnit.length;
   }
   return total.toString();
 }
@@ -279,28 +339,38 @@ function fromAdditive(text: string): string {
  */
 function toArabic(text: unknown): string {
   if (typeof text !== "string") {
-    throw new NihonNumbersError(
-      "INVALID_TYPE",
-      `Input must be a string of kanji numerals, received ${describeType(text)}`,
-    );
+    throw createError("INVALID_TYPE", `Input must be a string of kanji numerals, received ${describeType(text)}`);
   }
   if (text === "") {
-    throw new NihonNumbersError("INVALID_KANJI", "Input must not be empty");
+    throw createError("INVALID_KANJI", "Input must not be empty");
   }
-  for (const [index, character] of Array.from(text).entries()) {
+  const written = Array.from(text);
+  for (const [index, character] of written.entries()) {
     if (!KANJI_CHARACTERS.has(character)) {
-      throw unexpectedCharacter(text, index);
+      throw unexpectedCharacter(text, written, index);
     }
   }
   if (text === "零") {
     return "0";
   }
-  if (/^[〇一二三四五六七八九]+$/.test(text)) {
-    return fromPositional(text);
+  const characters = written.map((character) => ALTERNATIVES.get(character) ?? character);
+  if (characters.every((character) => DIGITS.includes(character))) {
+    return fromPositional(characters);
   }
-  return fromAdditive(text);
+  return fromAdditive(text, written, characters);
 }
 
+/**
+ * Converts kanji numerals into Arabic numerals.
+ * @param n Kanji numerals in additive notation, such as 二千二十六, or positional notation, such as 二〇二六.
+ * @param direction `"toArabic"`.
+ * @returns The number as a string of Arabic numerals without leading zeros, such as "2026".
+ * Pass it to `Number()` or `BigInt()` to do arithmetic with it.
+ * @throws {TypeError} `INVALID_TYPE` if the input is not a string.
+ * @throws {SyntaxError} `INVALID_KANJI` if the input is not valid kanji numerals.
+ * @throws {RangeError} `TOO_LARGE` if the input is positional notation of 10^72 or more.
+ */
+function processNumber(n: string, direction: "toArabic"): string;
 /**
  * Converts a non-negative integer into kanji numerals.
  * @param n The number to convert. A `number` is rounded down and must not exceed `Number.MAX_SAFE_INTEGER`.
@@ -308,19 +378,11 @@ function toArabic(text: unknown): string {
  * @param direction `"toAdditive"` (the default) writes additive notation, such as 二千二十六 for 2026.
  * `"toPositional"` writes positional notation, such as 二〇二六.
  * @returns The number in kanji numerals.
- * @throws {NihonNumbersError} If the input is not a finite number or a bigint, is negative, or is too large,
- * or if the direction is not recognised.
+ * @throws {TypeError} `INVALID_TYPE` if the input is not a number or a bigint, or `INVALID_DIRECTION` if the direction
+ * is not recognised.
+ * @throws {RangeError} `NOT_FINITE`, `NEGATIVE`, `UNSAFE_INTEGER` or `TOO_LARGE` if the input is out of range.
  */
 function processNumber(n: number | bigint, direction?: "toAdditive" | "toPositional"): string;
-/**
- * Converts kanji numerals into Arabic numerals.
- * @param n Kanji numerals in additive notation, such as 二千二十六, or positional notation, such as 二〇二六.
- * @param direction `"toArabic"`.
- * @returns The number as a string of Arabic numerals without leading zeros, such as "2026".
- * Pass it to `Number()` or `BigInt()` to do arithmetic with it.
- * @throws {NihonNumbersError} If the input is not a string or is not valid kanji numerals.
- */
-function processNumber(n: string, direction: "toArabic"): string;
 function processNumber(n: unknown, direction: unknown = "toAdditive"): string {
   if (direction === "toAdditive") {
     return toAdditive(n);
@@ -331,12 +393,13 @@ function processNumber(n: unknown, direction: unknown = "toAdditive"): string {
   if (direction === "toArabic") {
     return toArabic(n);
   }
-  const received = typeof direction === "string" ? `"${direction}"` : describeType(direction);
-  throw new NihonNumbersError(
+  const received = typeof direction === "string" ? quote(direction) : describeType(direction);
+  throw createError(
     "INVALID_DIRECTION",
     `Direction must be "toAdditive", "toPositional" or "toArabic", received ${received}`,
   );
 }
 
-export { processNumber, NihonNumbersError, type NihonNumbersErrorCode };
+export { processNumber, isNihonNumbersError };
+export type { NihonNumbersError, NihonNumbersErrorCode };
 export default processNumber;
