@@ -376,7 +376,8 @@ function processNumber(n: string, direction: "toArabic"): string;
  * @param n The number to convert. A `number` is rounded down and must not exceed `Number.MAX_SAFE_INTEGER`.
  * Pass a `bigint` for larger values, up to 10^72 - 1.
  * @param direction `"toAdditive"` (the default) writes additive notation, such as 二千二十六 for 2026.
- * `"toPositional"` writes positional notation, such as 二〇二六.
+ * `"toPositional"` writes positional notation, one kanji digit per decimal place, such as 二〇二六. Use it to practise
+ * reading kanji digits: Japanese writes few numbers this way, mainly years and phone numbers in vertical text.
  * @returns The number in kanji numerals.
  * @throws {TypeError} `INVALID_TYPE` if the input is not a number or a bigint, or `INVALID_DIRECTION` if the direction
  * is not recognised.

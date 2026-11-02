@@ -6,7 +6,7 @@
 ![npm total downloads](https://img.shields.io/npm/dt/nihon-numbers)
 ![npm version](https://img.shields.io/npm/v/nihon-numbers)
 
-A lightweight, dependency-free module that converts numbers between Arabic numerals and kanji numerals, in additive notation (三千八百) or positional notation (三八〇〇).
+A lightweight, dependency-free module that converts numbers between Arabic numerals and kanji numerals (三千八百). It can also write numbers one kanji digit at a time (三八〇〇), for practising reading kanji digits.
 
 ```javascript
 processNumber(3800); // "三千八百"
@@ -50,6 +50,12 @@ processNumber(n: string, direction: "toArabic"): string
 
 `direction` defaults to `"toAdditive"`.
 
+Don't pass `processNumber` straight to `map` or `forEach`. They pass the index as the second argument, which `processNumber` rejects as a direction. Wrap it instead:
+
+```typescript
+[2025, 2026].map((n) => processNumber(n)); // ["二千二十五", "二千二十六"]
+```
+
 ### Additive notation: `"toAdditive"`
 
 Converts a non-negative integer into additive notation, which writes each digit followed by its unit: 2026 becomes 二千二十六. This is the default.
@@ -62,6 +68,8 @@ Converts a non-negative integer into additive notation, which writes each digit 
 ### Positional notation: `"toPositional"`
 
 Converts a non-negative integer into positional notation, which writes one kanji digit per decimal place: 2026 becomes 二〇二六.
+
+Use it to practise reading kanji digits quickly, without working through 十, 百, 千 and the large units. Japanese writes few numbers this way, mainly years, phone numbers and addresses in vertical text, and even then reads 二〇二六年 the same as 二千二十六年: _nisen nijūroku nen_. For numbers as they're normally written, use `"toAdditive"`.
 
 - Zero becomes `〇`, both on its own and inside a number (`二〇〇五`).
 - It takes the same input as `"toAdditive"`, with the same rounding and limits.
@@ -85,11 +93,12 @@ It accepts:
 - `零` or `〇` on its own for zero
 - `一` before 十, 百 and 千: `一千`, `一百一十`
 - `秭` in place of `𥝱`
+- `○` (a white circle, often typed instead of `〇`) wherever `〇` is accepted: `二○二六` becomes `"2026"`
 - leading `〇`s in positional notation: `〇〇五` becomes `"5"`
 
 It rejects:
 
-- `零` inside a number (`二零二六`) and `〇` inside additive notation (`二千〇五`)
+- `零` inside a number (`二零二六`) and `〇` or `○` inside additive notation (`二千〇五`)
 - a large unit without a number before it: `万` instead of `一万`
 - large units out of order: `一万一億`
 - daiji (`壱`, `弐`, `拾`, `萬`), `廿` and `卅`, decimals, negative numbers, counters and suffixes such as `年` or `円`, Arabic or full-width digits, and whitespace
@@ -97,33 +106,35 @@ It rejects:
 
 ### Errors
 
-Every error is a `NihonNumbersError`. It extends `TypeError` and has a `code` that says what went wrong:
+Errors are built-in `TypeError`, `RangeError` and `SyntaxError` objects, each with a `code` that says what went wrong:
 
-| Code                | Thrown when                                                                                                               |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `INVALID_DIRECTION` | `direction` is not `"toAdditive"`, `"toPositional"` or `"toArabic"`                                                       |
-| `INVALID_TYPE`      | the input is not a `number` or a `bigint` (including numeric strings such as `"123"`), or, for `"toArabic"`, not a string |
-| `NOT_FINITE`        | the input is `NaN`, `Infinity` or `-Infinity`                                                                             |
-| `NEGATIVE`          | the input is negative                                                                                                     |
-| `UNSAFE_INTEGER`    | the input is a `number` above `Number.MAX_SAFE_INTEGER`. Pass a `bigint` instead.                                         |
-| `TOO_LARGE`         | the input is a `bigint` of 10<sup>72</sup> or more, or positional notation longer than 72 digits                          |
-| `INVALID_KANJI`     | the input is an empty string or not valid kanji numerals                                                                  |
+| Code                | Type          | Thrown when                                                                                                               |
+| ------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `INVALID_DIRECTION` | `TypeError`   | `direction` is not `"toAdditive"`, `"toPositional"` or `"toArabic"`                                                       |
+| `INVALID_TYPE`      | `TypeError`   | the input is not a `number` or a `bigint` (including numeric strings such as `"123"`), or, for `"toArabic"`, not a string |
+| `NOT_FINITE`        | `RangeError`  | the input is `NaN`, `Infinity` or `-Infinity`                                                                             |
+| `NEGATIVE`          | `RangeError`  | the input is negative                                                                                                     |
+| `UNSAFE_INTEGER`    | `RangeError`  | the input is a `number` above `Number.MAX_SAFE_INTEGER`. Pass a `bigint` instead.                                         |
+| `TOO_LARGE`         | `RangeError`  | the input is a `bigint` of 10<sup>72</sup> or more, or positional notation longer than 72 digits                          |
+| `INVALID_KANJI`     | `SyntaxError` | the input is an empty string or not valid kanji numerals                                                                  |
 
-Messages say what was received, such as `Input must not be negative, received -5`. Kanji errors also say where the problem is, counting characters from 0:
+`isNihonNumbersError` tells these errors apart from any others, so check it before reading `code`:
 
 ```typescript
-import { NihonNumbersError, processNumber } from "nihon-numbers";
+import { isNihonNumbersError, processNumber } from "nihon-numbers";
 
 try {
   processNumber("十十", "toArabic");
 } catch (error) {
-  if (error instanceof NihonNumbersError && error.code === "INVALID_KANJI") {
+  if (isNihonNumbersError(error) && error.code === "INVALID_KANJI") {
     console.log(error.message); // Unexpected "十" at index 1 in "十十"
   }
 }
 ```
 
-In TypeScript, the `NihonNumbersErrorCode` type lists every code.
+In TypeScript, `isNihonNumbersError` narrows the error to the `NihonNumbersError` type, and checking `code` narrows it to the matching error type: a `SyntaxError` for `INVALID_KANJI`. The `NihonNumbersErrorCode` type lists every code.
+
+Messages say what was received, such as `Input must not be negative, received -5`. Kanji errors also say where the problem is, counting characters from 0. Text from the input is quoted and escaped as in JSON, and cut to its first 32 characters followed by `…`. A number with more than 72 digits isn't repeated: the message says `received a number with more than 72 digits`.
 
 ### Examples
 
@@ -172,9 +183,10 @@ In TypeScript, the `NihonNumbersErrorCode` type lists every code.
 
 ## Upgrading from 1.1.x
 
-Version 1.2.0 adds the `direction` argument. Calls without it give the same results as before, but errors change:
+Version 2.0.0 adds the `direction` argument. Calls with one argument give the same results as before, but:
 
-- Errors are now `NihonNumbersError`. It extends `TypeError`, so `catch` blocks and `instanceof TypeError` checks still work, but `error.name` is now `"NihonNumbersError"` instead of `"TypeError"`.
+- Passing `processNumber` straight to `map`, `forEach` or another callback now throws `INVALID_DIRECTION`, because they pass the index as the second argument. Use `numbers.map((n) => processNumber(n))` instead.
+- Out-of-range input (`NOT_FINITE`, `NEGATIVE`, `UNSAFE_INTEGER` and `TOO_LARGE`) now throws a `RangeError` instead of a `TypeError`. Replace `instanceof TypeError` checks with `isNihonNumbersError(error)`, and check `error.code` for a specific error.
 - Error messages are reworded to say what was received. Check `error.code` instead of matching the message text.
 
 ## Upgrading from 1.0.x
