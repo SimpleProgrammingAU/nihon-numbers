@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Stage on npm
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check the release tag matches package.json
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Release tag $GITHUB_REF_NAME does not match package.json version v$version"
+            exit 1
+          fi
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false # never restore a cache into a job that can publish
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      # Stages the release; a maintainer approves it with 2FA on npmjs.com before it goes live.
+      # Staged publishing needs npm 11.15.0 or later, which Node 24 bundles; no NPM_TOKEN is stored.
+      # --ignore-scripts skips prepack, so the build that was just tested is the one staged.
+      - run: npm stage publish --provenance --ignore-scripts
