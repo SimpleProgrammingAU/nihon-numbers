@@ -1,6 +1,6 @@
 {
   "name": "nihon-numbers",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "A lightweight module to convert numbers between Arabic numerals and kanji numerals.",
   "main": "./lib/index.js",
   "type": "commonjs",
