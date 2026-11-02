@@ -1,6 +1,5 @@
 {
   "spec": ["lib/**/*.test.js"],
   "ui": "tdd",
-  "reporter": "spec",
-  "node-option": ["enable-source-maps"]
+  "reporter": "spec"
 }
