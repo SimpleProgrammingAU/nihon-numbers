@@ -1,6 +1,6 @@
 # nihon-numbers
 
-[![Node.js CI/CD](https://github.com/SimpleProgrammingAU/nihon-numbers/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/SimpleProgrammingAU/nihon-numbers/actions/workflows/main.yml)
+[![Node.js CI](https://github.com/SimpleProgrammingAU/nihon-numbers/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/SimpleProgrammingAU/nihon-numbers/actions/workflows/main.yml)
 ![GitHub issues](https://img.shields.io/github/issues/SimpleProgrammingAU/nihon-numbers)
 ![NPM Licence](https://img.shields.io/npm/l/nihon-numbers)
 ![npm total downloads](https://img.shields.io/npm/dt/nihon-numbers)
